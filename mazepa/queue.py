@@ -1,7 +1,9 @@
 import taskqueue
 import tenacity
 import boto3
-import .job_ready
+
+import mazepa
+import mazepa.job
 
 retry = tenacity.retry(
   reraise=True,
@@ -9,11 +11,24 @@ retry = tenacity.retry(
   wait=tenacity.wait_full_jitter(0.5, 60.0),
 
 class BasicQueue:
-    def submit(self):
+    def submit_task_batch(self):
         raise NotImplementedError
 
     def get_completed(self):
         raise NotImplementedError
+
+
+# TQ wrapper. Theretically don't have to use TQ library, but it's nice
+class MazepaTaskTQ(taskqueue.RegisteredTask):
+    def __init__(self, task_spec):
+        if not isinstance(task_spec, str):
+            task_spec = mazepa.serialize(task_spec)
+
+        self.task_spec = task_spec
+
+    def __call__(self):
+        task = mazepa.deserialize(self.task_spec)
+        task()
 
 class Queue(BasicQueue):
     def __init__(self, queue_name=None, threads=1, queue_region='us-east-1'):
@@ -28,11 +43,18 @@ class Queue(BasicQueue):
             #TODO: more lightweight?
             self.queue = taskqueue.LocalTaskQueue(parallel=1)
 
-    def submit(self, tasks):
+    def submit_tq_tasks(self, tq_tasks):
         if self.threads > 1:
             #TODO
             raise NotImplementedError
-        self.queue.insert_all(tasks)
+        self.queue.insert_all(tq_tasks)
+
+    def submit_mazepa_tasks(self, mazepa_tasks):
+        if self.threads > 1:
+            #TODO
+            raise NotImplementedError
+        tq_tasks = [MazepaTaskTQ(t) for t in mazepa_tasks]
+        self.submit_tq_tasks(tq_tasks)
 
     @retry
     def remote_queue_is_empty(self):
@@ -60,7 +82,7 @@ class Queue(BasicQueue):
 
     def get_completed(self):
         if self.is_local_queue() or self.remote_queue_is_emtpy()
-            return job_ready.AllJobsReady()
+            return job.AllJobsIndication()
         else:
             return None
 
