@@ -16,7 +16,7 @@ setuptools.setup(
     package_data={'': ['*.py']},
     install_requires=[
       'boto3',
-      'taskqueue',
+      'task-queue',
       'tenacity'
     ],
     packages=setuptools.find_packages(),

@@ -1,12 +1,8 @@
-from objectscriber import Scriber
-
-mazepa_scriber = Scriber()
-
-def serializable(cls):
-    return mazepa_scriber.register_class(cls)
+import pickle
+import codecs
 
 def serialize(obj):
-    return mazepa_scriber.serialize(obj)
+    return codecs.encode(pickle.dumps(obj, protocol=4), "base64").decode()
 
 def deserialize(s):
-    return mazepa_scriber.deserialize(s)
+    return pickle.loads(codecs.decode(s.encode(), "base64"))

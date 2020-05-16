@@ -31,7 +31,7 @@ class MazepaTaskTQ(TQRegisteredTask):
 
     def execute(self):
         task = mazepa.deserialize(self.task_spec)
-        print (f"Starting execution of {type(task)}")
+        print (f"Starting execution of {task}")
         ts = time.time()
         task.execute()
         te = time.time()

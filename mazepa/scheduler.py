@@ -1,9 +1,9 @@
 import time
 import uuid
+import six
 
 from mazepa.queue import Queue
-from mazepa.job import Job
-from mazepa.serialization import serialize_task_batch
+from mazepa.job import Job, AllJobsIndicator
 
 class Scheduler:
     def __init__(self, queue_name=None, threads=1):
@@ -20,11 +20,13 @@ class Scheduler:
             self.submit_jobs(jobs_ready)
 
     def execute_until_completion(self, sleep_gap_sec=15):
-        jobs_spec = AllJobs()
+        jobs_spec = AllJobsIndicator()
         self.submit_jobs(jobs_spec)
 
-        while self.unfinished_jobs:
+        while True:
             self.submit_ready_jobs()
+            if not self.unfinished_jobs:
+                break
             time.sleep(sleep_gap_sec)
 
     def submit_jobs(self, jobs_spec):
@@ -34,29 +36,36 @@ class Scheduler:
         for job_name, job in six.iteritems(self.unfinished_jobs):
             this_job_tasks = []
             # if this job is flagged for execution
-            if isinstance(jobs_spec, AllJobs) or \
+            if isinstance(jobs_spec, AllJobsIndicator) or \
                     job_name in jobs_spec:
-                if isinstance(job, mazepa.Job):
-                    if job.no_more_tasks:
+                if isinstance(job, Job):
+                    this_job_tasks = job.get_next_task_batch()
+                    print ("Got {} tasks from job '{}'".format(len(this_job_tasks),
+                            job_name))
+                    if this_job_tasks == []:
                         jobs_just_finished.append(job_name)
-                    else:
-                        this_job_tasks = job.get_next_task_batch()
                 else:
                     try:
                         this_job_tasks = job()
                     except StopIteration:
+                        print ("Job '{}' is done!")
                         jobs_just_finished.append(job_name)
-
                 for t in this_job_tasks:
-                    tasks.tags['job_name'] = job_name
+                    t.tags['job_name'] = job_name
+
                 tasks.extend(this_job_tasks)
 
         # Move finished jobs to finished dict
         for job_name in jobs_just_finished:
+            print ("Flagging job as FINISHED: '{}'".format(job_name))
             self.finished_jobs[job_name] = self.unfinished_jobs[job_name]
             del self.unfinished_jobs[job_name]
 
-        self.queue.submit_mazepa_tasks(tasks)
+        if len(tasks) > 0:
+            print ("Scheduling {} tasks..".format(len(tasks)))
+            self.queue.submit_mazepa_tasks(tasks)
+        else:
+            print ("No tasks to submit!")
 
 
     def register_job(self, job, job_name=None):
@@ -64,7 +73,7 @@ class Scheduler:
         job must be either an istance of type mazepa.Job
         or a simple generator
         '''
-        if not isinstance(job, mazepa.Job):
+        if not isinstance(job, Job):
            if not inspect.isgeneratorfunction(job) and \
                    not inspect.isgenerator(job):
                        raise Exception("Registering job that is \
@@ -72,6 +81,7 @@ class Scheduler:
                                not supported. Submitted job type: {}".format(
                                    type(job)
                                    ))
+
         if job_name is None:
             job_name = uuid.uuid1()
             while job_name in self.unfinished_jobs:
