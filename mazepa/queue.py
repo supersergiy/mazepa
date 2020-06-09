@@ -2,6 +2,8 @@ import boto3
 import tenacity
 import taskqueue
 import time
+import uuid
+from collections import defaultdict
 
 from taskqueue import RegisteredTask as TQRegisteredTask
 
@@ -14,20 +16,25 @@ retry = tenacity.retry(
   )
 
 
-class BasicQueue:
-    def submit_task_batch(self):
-        raise NotImplementedError
-
-    def get_completed(self):
-        raise NotImplementedError
-
-
 # TQ wrapper. Theretically don't have to use TQ library, but it's nice
 class MazepaTaskTQ(TQRegisteredTask):
-    def __init__(self, task_spec):
-        if not isinstance(task_spec, str):
-            task_spec = mazepa.serialize(task_spec)
-        super().__init__(task_spec=task_spec)
+    def __init__(self, task=None,
+            task_spec=None,
+            completion_queue_name=None,
+            completion_queue_region=None,
+            task_id=None,
+            job_id=None
+            ):
+
+        if task is not None:
+            task_spec = mazepa.serialize(task)
+            task_id = str(uuid.uuid4())
+            job_id = task.job_name
+
+        super().__init__(task_spec=task_spec,
+                task_id=task_id, job_id=job_id,
+                completion_queue_name=completion_queue_name,
+                completion_queue_region=completion_queue_region)
 
     def execute(self):
         task = mazepa.deserialize(self.task_spec)
@@ -35,26 +42,105 @@ class MazepaTaskTQ(TQRegisteredTask):
         ts = time.time()
         task.execute()
         te = time.time()
-        print (f"Done! Execution time: {te - ts} seconds.")
+        print (f"Done! Execution time: {te - ts} seconds. ")
+        if self.completion_queue_name is not None:
+            if self.job_id is None:
+                raise Exception("'job_id' property must be set "
+                        "for each task")
 
-class Queue(BasicQueue):
-    def __init__(self, queue_name=None, threads=1, queue_region='us-east-1'):
+            send_completion_report(
+                    queue_name=self.completion_queue_name,
+                    queue_region=self.completion_queue_region,
+                    task_id=self.task_id,
+                    job_id=self.job_id
+                    )
+
+def send_completion_report(queue_name, queue_region,
+        task_id, job_id):
+    completion_queue = TaskQueue(queue_name=completed_queue_name,
+                                 region_name=queue_region,
+                                 n_threads=0)
+
+    queue_api_obj = completion_queue._api
+    queue_sqs_obj = completion_queue._api._sqs
+    message = [{
+        'Id': 'Completion Report',
+        'MessageBody':json.dumps({
+                "task_id": task_id,
+                "job_id": job_id
+        })
+    }]
+    send_message(queue_api_obj, queue_sqs_obj, message)
+
+
+def send_message(queue_api_obj, queue_sqs_obj, message):
+    msg_ack = queue_sqs_obj.send_message_batch(
+            QueueUrl=queue_api_obj._qurl,
+            Entries=message
+        )
+
+    success = False
+    for i in range(20):
+        if 'Successful' in msg_ack and \
+            len(msg_ack['Successful']) > 0:
+            success = True
+            break
+        else:
+            msg_ack = queue_sqs_obj.send_message_batch(
+                    QueueUrl=queue_api_obj._qurl,
+                    Entries=message
+                )
+
+    if success == False:
+        raise ValueError(f"Failed to send message {message} to "
+                         f"queue {queue_api_obj._qurl}")
+
+
+class Queue:
+    def __init__(self, queue_name=None, completion_queue_name=None,
+            threads=1, queue_region=None):
         self.threads = threads
         self.queue_name = queue_name
+        self.completion_queue_name = completion_queue_name
+        self.completion_registry = None
+
         if queue_name is None:
             self.local_execution = True
             #self.queue = taskqueue.LocalTaskQueue(parallel=1)
         else:
             self.local_execution = False
-            self.queue = taskqueue.GreenTaskQueue(queue_name)
+            self.queue = taskqueue.GreenTaskQueue(queue_name,
+                    region=queue_region)
             self.queue_boto = boto3.client('sqs',
                                             region_name=queue_region)
-            self.queue_url = self.queue_boto.get_queue_url(QueueName=self.queue_name)["QueueUrl"]
+            self.queue_url = self.queue_boto.get_queue_url(
+                    QueueName=self.queue_name)["QueueUrl"]
+
+            if completion_queue_name is not None:
+                self.completion_registry = None
+                self.completion_queue = \
+                        taskqueue.GreenTaskQueue(
+                                completion_queue_name,
+                                region=queue_region)
+                self.completion_queue_url = \
+                        self.queue_boto.get_queue_url(
+                              QueueName=
+                                  completion_queue_name)["QueueUrl"]
+
+                self.completion_registry = defaultdict(lambda: [])
+
+            else:
+                self.completion_queue = None
+                self.completion_queue_url = None
 
     def submit_tq_tasks(self, tq_tasks):
         if self.threads > 1:
             #TODO
             raise NotImplementedError
+        if self.completion_queue is not None:
+            for t in tq_tasks:
+                self.completion_registry[t.job_id].append(t.task_id)
+
         self.queue.insert_all(tq_tasks)
 
     def submit_mazepa_tasks(self, mazepa_tasks):
@@ -82,7 +168,8 @@ class Queue(BasicQueue):
                     AttributeNames=attribute_names)
             for a in attribute_names:
                 responses.append(int(response['Attributes'][a]))
-                print('{}     '.format(responses[-2:]), end="\r", flush=True)
+                print('{}     '.format(responses[-2:]),
+                                           end="\r", flush=True)
             if i < 2:
               time.sleep(1)
 
@@ -95,15 +182,51 @@ class Queue(BasicQueue):
         return not self.is_local_queue()
 
     def get_completed(self):
-        if self.is_local_queue() or self.remote_queue_is_empty():
+        if self.is_local_queue():
             return mazepa.job.AllJobsIndicator()
         else:
-            return None
+            if self.remote_queue_is_empty():
+                return mazepa.job.AllJobsIndicator()
+            elif self.completion_queue is not None:
+                return self.check_completion_report()
+            else:
+                return None
+
+    def check_completion_report(self):
+        while True:
+            resp = self.completion_queue_boto.receive_message(
+                            QueueUrl=self.completion_queue_url,
+                            AttributeNames=['All'],
+                            MaxNumberOfMessages=10)
+
+            if 'Messages' not in resp:
+                return None
+            else:
+                entries = []
+                completed_tasks = []
+
+                for i in range(len(resp['Messages'])):
+                    entries.append({
+                        'ReceiptHandle':\
+                            resp['Messages'][i]['ReceiptHandle'],
+                        'Id': str(i)
+                    })
+                    completed_tasks.append(json.loads(
+                            resp['Messages'][i]['Body']))
+
+                self.completion_queue_boto.delete_message_batch(
+                        QueueUrl=self.completion_queue_url,
+                        Entries=entries)
+
+            completed_jobs = []
+            for t in completed_tasks:
+                del self.completion_registry[t.job_id][t.task_id]
+                if len(self.completion_registry[t.job_id]) == 0:
+                    completed_jobs.append(t.job_id)
+
+            if len(completed_jobs) > 0:
+                return completed_jobs
 
     def poll_tasks(self, lease_seconds):
         assert self.is_remote_queue
         self.queue.poll(lease_seconds=lease_seconds)
-
-
-
-

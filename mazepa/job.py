@@ -1,6 +1,6 @@
 class Task:
     def __init__(self, *kargs, **kwargs):
-        self.tags = {}
+        self.job_id = None
 
     def __call__(self, *kargs, **kwargs):
         raise NotImplementedError

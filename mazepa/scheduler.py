@@ -6,8 +6,12 @@ from mazepa.queue import Queue
 from mazepa.job import Job, AllJobsIndicator
 
 class Scheduler:
-    def __init__(self, queue_name=None, threads=1):
-        self.queue = Queue(queue_name=queue_name, threads=threads)
+    def __init__(self, queue_name=None, completion_queue_name=None,
+            queue_region=None, threads=1):
+        self.queue = Queue(queue_name=queue_name,
+                completion_queue_name=completion_queue_name,
+                queue_region=queue_region,
+                threads=threads)
         self.unfinished_jobs = {}
         self.finished_jobs   = {}
 
@@ -51,7 +55,7 @@ class Scheduler:
                         print ("Job '{}' is done!")
                         jobs_just_finished.append(job_name)
                 for t in this_job_tasks:
-                    t.tags['job_name'] = job_name
+                    t.job_name = job_name
 
                 tasks.extend(this_job_tasks)
 

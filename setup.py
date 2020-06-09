@@ -5,10 +5,10 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="mazepa",
-    version="0.0.0.1",
+    version="0.0.1",
     author="Sergiy Popovych",
     author_email="sergiy.popovich@gmail.com",
-    description="A tool for scheduling tasks to AWS queue",
+    description="A tool for efficient scheduling of independent tasks to remote workers",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/supersergiy/mazepa",
