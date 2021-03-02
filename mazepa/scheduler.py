@@ -7,7 +7,7 @@ from mazepa.job import Job, AllJobsIndicator
 
 class Scheduler:
     def __init__(self, queue_name=None, completion_queue_name=None,
-            queue_region=None, threads=1):
+            queue_region=None, threads=8):
         self.queue = Queue(queue_name=queue_name,
                 completion_queue_name=completion_queue_name,
                 queue_region=queue_region,
@@ -43,7 +43,7 @@ class Scheduler:
             if isinstance(jobs_spec, AllJobsIndicator) or \
                     job_name in jobs_spec:
                 if isinstance(job, Job):
-                    this_job_tasks = job.get_next_task_batch()
+                    this_job_tasks = job.get_task_batch()
                     print ("Got {} tasks from job '{}'".format(len(this_job_tasks),
                             job_name))
                     if this_job_tasks == []:

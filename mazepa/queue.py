@@ -3,6 +3,7 @@ import tenacity
 import taskqueue
 import time
 import uuid
+import multiprocessing
 from collections import defaultdict
 
 from taskqueue import RegisteredTask as TQRegisteredTask
@@ -30,6 +31,7 @@ class MazepaTaskTQ(TQRegisteredTask):
             task_spec = mazepa.serialize(task)
             task_id = str(uuid.uuid4())
             job_id = task.job_name
+            #task_spec = '_'.join(["hello"] * 150)
 
         super().__init__(task_spec=task_spec,
                 task_id=task_id, job_id=job_id,
@@ -98,7 +100,7 @@ def send_message(queue_api_obj, queue_sqs_obj, message):
 
 class Queue:
     def __init__(self, queue_name=None, completion_queue_name=None,
-            threads=1, queue_region=None):
+            threads=8, queue_region=None):
         self.threads = threads
         self.queue_name = queue_name
         self.completion_queue_name = completion_queue_name
@@ -106,11 +108,10 @@ class Queue:
 
         if queue_name is None:
             self.local_execution = True
-            #self.queue = taskqueue.LocalTaskQueue(parallel=1)
         else:
             self.local_execution = False
-            self.queue = taskqueue.GreenTaskQueue(queue_name,
-                    region=queue_region)
+            self.queue = taskqueue.TaskQueue(queue_name,
+                    region=queue_region, green=False)
             self.queue_boto = boto3.client('sqs',
                                             region_name=queue_region)
             self.queue_url = self.queue_boto.get_queue_url(
@@ -134,26 +135,30 @@ class Queue:
                 self.completion_queue_url = None
 
     def submit_tq_tasks(self, tq_tasks):
-        if self.threads > 1:
-            #TODO
-            raise NotImplementedError
         if self.completion_queue is not None:
             for t in tq_tasks:
                 self.completion_registry[t.job_id].append(t.task_id)
 
-        self.queue.insert_all(tq_tasks)
+        self.queue.insert(tq_tasks, parallel=self.threads)
 
     def submit_mazepa_tasks(self, mazepa_tasks):
-        if self.threads > 1:
-            #TODO
-            raise NotImplementedError
         if self.local_execution:
             print ("Starting local task execution...")
             for t in mazepa_tasks:
                 t.execute()
         else:
-            tq_tasks = [MazepaTaskTQ(t) for t in mazepa_tasks]
+            s = time.time()
+            #tq_tasks = [MazepaTaskTQ(t) for t in mazepa_tasks]
+            pool = multiprocessing.Pool(32)
+            tq_tasks = pool.map(MazepaTaskTQ, mazepa_tasks)
+            print (time.time() - s)
             self.submit_tq_tasks(tq_tasks)
+
+            # TODO: why?
+            #batch_size = 8
+            #for start in range(0, len(tq_tasks) + batch_size, batch_size):
+            #    end = min(len(tq_tasks), start + batch_size)
+            #    self.submit_tq_tasks(tq_tasks[start:end])
 
     @retry
     def remote_queue_is_empty(self):

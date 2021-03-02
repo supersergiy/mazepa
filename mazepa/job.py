@@ -1,3 +1,5 @@
+import types
+
 class Task:
     def __init__(self, *kargs, **kwargs):
         self.job_id = None
@@ -7,82 +9,60 @@ class Task:
 
 
 class Job:
-    def __init__(self, *kargs, **kwargs):
-        pass
+    def __init__(self, task_batch_size=300000, *kargs, **kwargs):
+        self.task_batch_size = task_batch_size
+        self.task_generator = self.task_generator()
+        self.task_batch_generator = self.task_batch_generator()
 
     def get_tasks(self):
-        raise NotImplementedError
+        return next(self.task_generator)
 
-    def get_next_task_batch(self):
+    def task_generator(self):
+        raise NotImplemented("Jobs must implement 'task_generator' function")
+
+    def get_task_batch(self):
+        return next(self.task_batch_generator)
+
+    def task_batch_generator(self):
         '''
-        returns: list of tasks that can be completed. when done, returns an empty list
+        yields: list of tasks that can be completed. when done, yields an empty list
         '''
         result = []
         while True:
             #squeeze the job until it's either done or returns a barrier
             try:
-                next_step = self.get_tasks()
+                task_batch = self.get_tasks()
+
+                if task_batch is Barrier:
+                    if len(result) == 0:
+                        raise Exception(f"Job '{type(self)}' issued two Bariers in a row, "
+                                         "or issued a barrier as the first task")
+                    else:
+                        yield result
+                        result = []
+                elif isinstance(task_batch, list):
+                    result.extend(task_batch)
+                elif isinstance(task_batch, types.GeneratorType):
+                    for new_task in task_batch:
+                        result.append(new_task)
+
+                        if len(result) >= self.task_batch_size:
+                            yield result
+                            result = []
+                else:
+                    raise Exception(f"Object of unsupported type '{type(task_batch)}' yielded task_generator")
+
+                if len(result) >= self.task_batch_size:
+                    yield result
+                    result = []
+
             except StopIteration:
                 #means that this job has no more tasks, it's done
+                yield result
                 break
-            else:
-                if next_step is Barrier:
-                    if len(result) == 0:
-                        raise Exception(f"Job '{type(self)}' issued two Bariers in a row")
-                    break
-                elif isinstance(next_step, list):
-                    result.extend(next_step)
 
-        return result
 
-    def old_get_next_task_batch(self):
-            '''
-            Main execution loop.
-            Returns type of next(self.iterator) must be either a lits (of tasks),
-            execution signal, or another Mazepa Job. When the job is done,
-            next(self.iterator)) will raise a StopIteration exception.
-
-            Results are accumulated until one of two conditions is met:
-                1)  next(self.iterator)) raises a StopIteration exception, meaning
-                   that this job is complete, and the no_more_tasks flag is set
-                   to indicate completion.
-                2) next(self.iterator) returns an execution signal of type Barrier,
-                   which means that proceeding tasks need to wait for current
-                   tasks to complete first.
-            '''
-            while True:
-                try:
-                    if isinstance(self.next_step, MazepaExecutionSignal):
-                        if isinstance(self.next_step, Barrier):
-                            self.next_step = next(self.iterator)
-                            return result
-                        else:
-                            raise Exception("Unknown execution signal \
-                                    of type {}".format(type(self.next_step)))
-
-                    elif isinstance(self.next_step, Job):
-                        subjob = self.next_step
-                        subjob_task_batch = subjob.get_next_task_batch()
-                        result += subjob_task_batch
-
-                        if subjob.has_more_tasks():
-                            # if the subjob is not done, it means theres
-                            # a dependency inside it, ie it received a Barrier.
-                            # have to wait until current tasks complete
-                            # the next iteration of the while loop will come back
-                            # to call get_next_task_batch on this subjob
-                            return result
-                        else:
-                            self.next_step = next(self.iterator)
-
-                    else:
-                        task_list = self.next_step
-                        result += task_list
-                        self.next_step = next(self.iterator)
-
-                except StopIteration:
-                   self.no_more_tasks = True
-                   return result
+        yield []
 
 class MazepaExecutionSignal:
     def __init__(self):
