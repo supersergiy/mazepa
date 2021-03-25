@@ -177,7 +177,6 @@ class Queue:
                     if num_messages > 0:
                         is_empty = False
                         break
-                    print('{}     '.format(responses[-2:]), end="\r", flush=True)
                 if i < 9:
                     time.sleep(0.5)
 
