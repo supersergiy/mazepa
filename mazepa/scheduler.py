@@ -12,6 +12,7 @@ class Scheduler:
                 completion_queue_name=completion_queue_name,
                 queue_region=queue_region,
                 threads=threads)
+
         self.unfinished_jobs = {}
         self.finished_jobs   = {}
 
@@ -23,7 +24,7 @@ class Scheduler:
         if jobs_ready is not None:
             self.submit_jobs(jobs_ready)
 
-    def execute_until_completion(self, sleep_gap_sec=15):
+    def execute_until_completion(self, sleep_gap_sec=4):
         jobs_spec = AllJobsIndicator()
         self.submit_jobs(jobs_spec)
 

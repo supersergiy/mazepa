@@ -110,17 +110,25 @@ class Queue:
             self.local_execution = True
         else:
             self.local_execution = False
-            self.queue = taskqueue.TaskQueue(queue_name,
-                    region=queue_region, green=False)
-            self.queue_boto = boto3.client('sqs',
-                                            region_name=queue_region)
-            self.queue_url = self.queue_boto.get_queue_url(
-                    QueueName=self.queue_name)["QueueUrl"]
+            if queue_name.startswith('fq://'):
+                self.queue_type = 'fq'
+                self.queue = taskqueue.TaskQueue(queue_name, green=False)
+            else:
+                self.queue_type = 'sqs'
+                self.queue = taskqueue.TaskQueue(queue_name,
+                        region=queue_region, green=False)
+                self.queue_boto = boto3.client('sqs',
+                                                region_name=queue_region)
+                self.queue_url = self.queue_boto.get_queue_url(
+                        QueueName=self.queue_name)["QueueUrl"]
 
             if completion_queue_name is not None:
+                if self.queue_type == 'fq':
+                    raise NotImplementedError("Completion queue is not supported with sqs")
+
                 self.completion_registry = None
                 self.completion_queue = \
-                        taskqueue.GreenTaskQueue(
+                        taskqueue.TaskQueue(
                                 completion_queue_name,
                                 region=queue_region)
                 self.completion_queue_url = \
@@ -151,34 +159,35 @@ class Queue:
             #tq_tasks = [MazepaTaskTQ(t) for t in mazepa_tasks]
             pool = multiprocessing.Pool(32)
             tq_tasks = pool.map(MazepaTaskTQ, mazepa_tasks)
-            print (time.time() - s)
             self.submit_tq_tasks(tq_tasks)
-
-            # TODO: why?
-            #batch_size = 8
-            #for start in range(0, len(tq_tasks) + batch_size, batch_size):
-            #    end = min(len(tq_tasks), start + batch_size)
-            #    self.submit_tq_tasks(tq_tasks[start:end])
 
     @retry
     def remote_queue_is_empty(self):
         """Is our remote queue empty?
         """
         #TODO: cleanup
-        attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
-        responses = []
-        for i in range(3):
-            response = self.queue_boto.get_queue_attributes(
-                    QueueUrl=self.queue_url,
-                    AttributeNames=attribute_names)
-            for a in attribute_names:
-                responses.append(int(response['Attributes'][a]))
-                print('{}     '.format(responses[-2:]),
-                                           end="\r", flush=True)
-            if i < 2:
-              time.sleep(1)
+        if self.queue_type == 'sqs':
+            attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
+            responses = []
+            for i in range(3):
+                response = self.queue_boto.get_queue_attributes(
+                        QueueUrl=self.queue_url,
+                        AttributeNames=attribute_names)
+                for a in attribute_names:
+                    responses.append(int(response['Attributes'][a]))
+                    print('{}     '.format(responses[-2:]),
+                                               end="\r", flush=True)
+                if i < 2:
+                  time.sleep(1)
 
-        return all(n == 0 for n in responses)
+            result = all(n == 0 for n in responses)
+            if result == False:
+                time.sleep(10)
+            return result
+        elif self.queue_type == 'fq':
+            return self.queue.is_empty()
+        else:
+            raise Exception(f"Unsupported queue type: '{self.queue_type}'")
 
     def is_local_queue(self):
         return self.local_execution

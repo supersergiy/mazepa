@@ -9,7 +9,7 @@ class Task:
 
 
 class Job:
-    def __init__(self, task_batch_size=300000, *kargs, **kwargs):
+    def __init__(self, task_batch_size=300000, **kwargs):
         self.task_batch_size = task_batch_size
         self.task_generator = self.task_generator()
         self.task_batch_generator = self.task_batch_generator()
@@ -45,7 +45,6 @@ class Job:
                 elif isinstance(task_batch, types.GeneratorType):
                     for new_task in task_batch:
                         result.append(new_task)
-
                         if len(result) >= self.task_batch_size:
                             yield result
                             result = []

@@ -5,10 +5,11 @@ from mazepa.scheduler import Scheduler
 from mazepa.executor import Executor
 
 def click_options(cls):
-
     queue = click.option('--queue_name', '-q', nargs=1,
             type=str, default=None,
-            help="Name of AWS SQS queue where the tasks will be pushed. "
+            help="Name of the queue where the tasks will be pushed to. "
+            "For file queue, use 'fq://{path_to_shared_storage}' format."
+            "If no 'fq://' prefix is given, the queue is assumed to be SQS. "
             "If not specified, tasks will be executed locally.")
 
     completion_queue = click.option('--completion_queue_name', nargs=1,
@@ -17,7 +18,8 @@ def click_options(cls):
             "be reported. Must be distinct from the 'queue_name'. "
             "Providing a completion queue will speed up execution when "
             "running workers on unreliable machines (preemptible, spot).")
-    region = click.option('--queue_region',  nargs=1,
+
+    region = click.option('--sqs_queue_region',  nargs=1,
             type=str, default='us-east-1',
             help="AWS region of  SQS queues. Task queue and completion "
             "queue must share the same region.")
@@ -27,7 +29,7 @@ def click_options(cls):
 def parse_queue_params(args):
     queue_name = args['queue_name']
     completion_queue_name = args['completion_queue_name']
-    queue_region = args['queue_region']
+    queue_region = args['sqs_queue_region']
 
     if queue_name is not None:
         s = boto3.Session()
