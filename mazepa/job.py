@@ -35,7 +35,7 @@ class Job:
 
                 if task_batch is Barrier:
                     if len(result) == 0:
-                        raise Exception(f"Job '{type(self)}' issued two Bariers in a row, "
+                        raise Exception(f"Job '{type(self)}' issued two Barriers in a row, "
                                          "or issued a barrier as the first task")
                     else:
                         yield result

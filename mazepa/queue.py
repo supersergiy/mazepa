@@ -167,18 +167,20 @@ class Queue:
         #TODO: cleanup
         attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
         responses = []
-        for i in range(3):
+        for i in range(10):
             response = self.queue_boto.get_queue_attributes(
                     QueueUrl=self.queue_url,
                     AttributeNames=attribute_names)
             for a in attribute_names:
-                responses.append(int(response['Attributes'][a]))
-                print('{}     '.format(responses[-2:]),
-                                           end="\r", flush=True)
-            if i < 2:
-              time.sleep(1)
+                num_messages = int(response['Attributes'][a])
+                if num_messages > 0:
+                    return False
+                responses.append(num_messages)
+                print('{}     '.format(responses[-2:]), end="\r", flush=True)
+            if i < 9:
+                time.sleep(0.5)
 
-        return all(n == 0 for n in responses)
+        return True
 
     def is_local_queue(self):
         return self.local_execution
