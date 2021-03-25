@@ -165,25 +165,26 @@ class Queue:
     def remote_queue_is_empty(self):
         """Is our remote queue empty?
         """
-        #TODO: cleanup
         if self.queue_type == 'sqs':
             attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
-            responses = []
-            for i in range(3):
+            is_empty = True
+            for i in range(10):
                 response = self.queue_boto.get_queue_attributes(
                         QueueUrl=self.queue_url,
                         AttributeNames=attribute_names)
                 for a in attribute_names:
-                    responses.append(int(response['Attributes'][a]))
-                    print('{}     '.format(responses[-2:]),
-                                               end="\r", flush=True)
-                if i < 2:
-                  time.sleep(1)
+                    num_messages = int(response['Attributes'][a])
+                    if num_messages > 0:
+                        is_empty = False
+                        break
+                    print('{}     '.format(responses[-2:]), end="\r", flush=True)
+                if i < 9:
+                    time.sleep(0.5)
 
-            result = all(n == 0 for n in responses)
-            if result == False:
+            if not is_empty:
                 time.sleep(10)
-            return result
+
+            return is_empty
         elif self.queue_type == 'fq':
             return self.queue.is_empty()
         else:
