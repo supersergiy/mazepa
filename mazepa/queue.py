@@ -4,6 +4,8 @@ import taskqueue
 import time
 import uuid
 import multiprocessing
+import functools
+import json
 from collections import defaultdict
 
 from taskqueue import RegisteredTask as TQRegisteredTask
@@ -31,8 +33,6 @@ class MazepaTaskTQ(TQRegisteredTask):
             task_spec = mazepa.serialize(task)
             task_id = str(uuid.uuid4())
             job_id = task.job_name
-            #task_spec = '_'.join(["hello"] * 150)
-
         super().__init__(task_spec=task_spec,
                 task_id=task_id, job_id=job_id,
                 completion_queue_name=completion_queue_name,
@@ -49,7 +49,6 @@ class MazepaTaskTQ(TQRegisteredTask):
             if self.job_id is None:
                 raise Exception("'job_id' property must be set "
                         "for each task")
-
             send_completion_report(
                     queue_name=self.completion_queue_name,
                     queue_region=self.completion_queue_region,
@@ -59,25 +58,23 @@ class MazepaTaskTQ(TQRegisteredTask):
 
 def send_completion_report(queue_name, queue_region,
         task_id, job_id):
-    completion_queue = TaskQueue(queue_name=completed_queue_name,
+    completion_queue = taskqueue.TaskQueue(
+                                 queue_name,
                                  region_name=queue_region,
                                  n_threads=0)
-
-    queue_api_obj = completion_queue._api
-    queue_sqs_obj = completion_queue._api._sqs
     message = [{
-        'Id': 'Completion Report',
+        'Id': 'completion_report',
         'MessageBody':json.dumps({
                 "task_id": task_id,
                 "job_id": job_id
         })
     }]
-    send_message(queue_api_obj, queue_sqs_obj, message)
+    send_message(completion_queue, message)
 
 
-def send_message(queue_api_obj, queue_sqs_obj, message):
-    msg_ack = queue_sqs_obj.send_message_batch(
-            QueueUrl=queue_api_obj._qurl,
+def send_message(q, message):
+    msg_ack = q.api.sqs.send_message_batch(
+            QueueUrl=q.api.qurl,
             Entries=message
         )
 
@@ -88,21 +85,22 @@ def send_message(queue_api_obj, queue_sqs_obj, message):
             success = True
             break
         else:
-            msg_ack = queue_sqs_obj.send_message_batch(
-                    QueueUrl=queue_api_obj._qurl,
+            msg_ack = q.api.sqs.send_message_batch(
+                    QueueUrl=q.api.qurl,
                     Entries=message
                 )
 
     if success == False:
         raise ValueError(f"Failed to send message {message} to "
-                         f"queue {queue_api_obj._qurl}")
+                         f"queue {q.api.qurl}")
 
 
 class Queue:
     def __init__(self, queue_name=None, completion_queue_name=None,
-            threads=8, queue_region=None):
+            threads=0, queue_region=None):
         self.threads = threads
         self.queue_name = queue_name
+        self.queue_region = queue_region
         self.completion_queue_name = completion_queue_name
         self.completion_registry = None
 
@@ -118,7 +116,7 @@ class Queue:
                 self.queue = taskqueue.TaskQueue(queue_name,
                         region=queue_region, green=False)
                 self.queue_boto = boto3.client('sqs',
-                                                region_name=queue_region)
+                                               region_name=queue_region)
                 self.queue_url = self.queue_boto.get_queue_url(
                         QueueName=self.queue_name)["QueueUrl"]
 
@@ -136,7 +134,7 @@ class Queue:
                               QueueName=
                                   completion_queue_name)["QueueUrl"]
 
-                self.completion_registry = defaultdict(lambda: [])
+                self.completion_registry = defaultdict(lambda: {})
 
             else:
                 self.completion_queue = None
@@ -145,7 +143,7 @@ class Queue:
     def submit_tq_tasks(self, tq_tasks):
         if self.completion_queue is not None:
             for t in tq_tasks:
-                self.completion_registry[t.job_id].append(t.task_id)
+                self.completion_registry[t.job_id][t.task_id] = True
 
         self.queue.insert(tq_tasks, parallel=self.threads)
 
@@ -155,10 +153,13 @@ class Queue:
             for t in mazepa_tasks:
                 t.execute()
         else:
-            s = time.time()
-            #tq_tasks = [MazepaTaskTQ(t) for t in mazepa_tasks]
-            pool = multiprocessing.Pool(32)
-            tq_tasks = pool.map(MazepaTaskTQ, mazepa_tasks)
+            pool = multiprocessing.Pool(self.threads)
+            task_constructor = functools.partial(
+                    MazepaTaskTQ,
+                    completion_queue_name=self.completion_queue_name,
+                    completion_queue_region=self.queue_region
+                    )
+            tq_tasks = pool.map(task_constructor, mazepa_tasks)
             self.submit_tq_tasks(tq_tasks)
 
     @retry
@@ -180,9 +181,6 @@ class Queue:
                 if i < 9:
                     time.sleep(0.5)
 
-            if not is_empty:
-                time.sleep(10)
-
             return is_empty
         elif self.queue_type == 'fq':
             return self.queue.is_empty()
@@ -199,22 +197,35 @@ class Queue:
         if self.is_local_queue():
             return mazepa.job.AllJobsIndicator()
         else:
-            if self.remote_queue_is_empty():
-                return mazepa.job.AllJobsIndicator()
-            elif self.completion_queue is not None:
-                return self.check_completion_report()
+            if self.completion_queue is None:
+                if self.remote_queue_is_empty():
+                    return mazepa.job.AllJobsIndicator()
+                else:
+                    time.sleep(5)
+                    return None
             else:
-                return None
+                completed_jobs = self.check_completion_report()
+                if completed_jobs is not None:
+                    return completed_jobs
+                else:
+                    if self.remote_queue_is_empty():
+                        return mazepa.job.AllJobsIndicator()
+                    else:
+                        time.sleep(5)
+                        return None
+
 
     def check_completion_report(self):
+        print ("Checking completion report...")
+        completed_jobs = []
         while True:
-            resp = self.completion_queue_boto.receive_message(
+            resp = self.queue_boto.receive_message(
                             QueueUrl=self.completion_queue_url,
                             AttributeNames=['All'],
                             MaxNumberOfMessages=10)
 
             if 'Messages' not in resp:
-                return None
+                break
             else:
                 entries = []
                 completed_tasks = []
@@ -228,18 +239,24 @@ class Queue:
                     completed_tasks.append(json.loads(
                             resp['Messages'][i]['Body']))
 
-                self.completion_queue_boto.delete_message_batch(
+                self.queue_boto.delete_message_batch(
                         QueueUrl=self.completion_queue_url,
                         Entries=entries)
-
-            completed_jobs = []
             for t in completed_tasks:
-                del self.completion_registry[t.job_id][t.task_id]
-                if len(self.completion_registry[t.job_id]) == 0:
-                    completed_jobs.append(t.job_id)
+                if t['job_id'] in self.completion_registry and \
+                        t['task_id'] in self.completion_registry[t['job_id']]:
+                    print (f"Deleting task {t['task_id']} from job {t['job_id']}")
+                    del self.completion_registry[t['job_id']][t['task_id']]
+                    if len(self.completion_registry[t['job_id']]) == 0:
+                        completed_jobs.append(t['job_id'])
+                else:
+                    print (f"Unregistered task {t['task_id']} from job {t['job_id']}")
 
-            if len(completed_jobs) > 0:
-                return completed_jobs
+
+        if len(completed_jobs) > 0:
+            return completed_jobs
+        else:
+            return None
 
     def poll_tasks(self, lease_seconds):
         assert self.is_remote_queue
