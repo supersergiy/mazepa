@@ -61,7 +61,8 @@ def send_completion_report(queue_name, queue_region,
     completion_queue = taskqueue.TaskQueue(
                                  queue_name,
                                  region_name=queue_region,
-                                 n_threads=0)
+                                 n_threads=0,
+                                 green=False)
     message = [{
         'Id': 'completion_report',
         'MessageBody':json.dumps({
@@ -128,7 +129,8 @@ class Queue:
                 self.completion_queue = \
                         taskqueue.TaskQueue(
                                 completion_queue_name,
-                                region=queue_region)
+                                region=queue_region,
+                                green=Fasle)
                 self.completion_queue_url = \
                         self.queue_boto.get_queue_url(
                               QueueName=

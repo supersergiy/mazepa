@@ -9,7 +9,7 @@ class Task:
 
 
 class Job:
-    def __init__(self, task_batch_size=300000, **kwargs):
+    def __init__(self, *kargs, task_batch_size=300000, **kwargs):
         self.task_batch_size = task_batch_size
         self.task_generator = self.task_generator()
         self.task_batch_generator = self.task_batch_generator()
@@ -32,7 +32,6 @@ class Job:
             #squeeze the job until it's either done or returns a barrier
             try:
                 task_batch = self.get_tasks()
-
                 if task_batch is Barrier:
                     if len(result) == 0:
                         raise Exception(f"Job '{type(self)}' issued two Barriers in a row, "
