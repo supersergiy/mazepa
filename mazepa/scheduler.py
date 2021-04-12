@@ -24,6 +24,10 @@ class Scheduler:
         jobs_ready = self.queue.get_completed()
         if jobs_ready is not None:
             self.submit_jobs(jobs_ready)
+        else:
+            unsubmitted_jobs = self.queue.get_unsubmitted_jobs(self.unfinished_jobs)
+            if unsubmitted_jobs is not None:
+                self.submit_jobs(unsubmitted_jobs)
 
     def execute_until_completion(self, sleep_gap_sec=4):
         jobs_spec = AllJobsIndicator()

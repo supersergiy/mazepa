@@ -130,7 +130,7 @@ class Queue:
                         taskqueue.TaskQueue(
                                 completion_queue_name,
                                 region=queue_region,
-                                green=Fasle)
+                                green=False)
                 self.completion_queue_url = \
                         self.queue_boto.get_queue_url(
                               QueueName=
@@ -249,8 +249,10 @@ class Queue:
                         t['task_id'] in self.completion_registry[t['job_id']]:
                     print (f"Deleting task {t['task_id']} from job {t['job_id']}")
                     del self.completion_registry[t['job_id']][t['task_id']]
+
                     if len(self.completion_registry[t['job_id']]) == 0:
                         completed_jobs.append(t['job_id'])
+                        del self.completion_registry[t['job_id']]
                 else:
                     print (f"Unregistered task {t['task_id']} from job {t['job_id']}")
 
@@ -259,6 +261,14 @@ class Queue:
             return completed_jobs
         else:
             return None
+
+    def get_unsubmitted_jobs(self, full_job_list):
+        unsubmitted_jobs = []
+        if self.completion_queue is not None:
+            for j in full_job_list:
+                if j not in self.completion_registry:
+                    unsubmitted_jobs.append(j)
+        return unsubmitted_jobs
 
     def poll_tasks(self, lease_seconds):
         assert self.is_remote_queue
