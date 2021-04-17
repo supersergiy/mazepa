@@ -1,5 +1,7 @@
 import types
+import objectscriber as scriber
 
+@scriber.register_class
 class Task:
     def __init__(self, *kargs, **kwargs):
         self.job_id = None

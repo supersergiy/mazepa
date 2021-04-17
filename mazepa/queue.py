@@ -18,8 +18,8 @@ retry = tenacity.retry(
   wait=tenacity.wait_full_jitter(0.5, 60.0),
   )
 
-
-# TQ wrapper. Theretically don't have to use TQ library, but it's nice
+import objectscriber as scriber
+@scriber.register_class
 class MazepaTaskTQ(TQRegisteredTask):
     def __init__(self, task=None,
             task_spec=None,
@@ -155,13 +155,15 @@ class Queue:
             for t in mazepa_tasks:
                 t.execute()
         else:
-            pool = multiprocessing.Pool(self.threads)
             task_constructor = functools.partial(
                     MazepaTaskTQ,
                     completion_queue_name=self.completion_queue_name,
                     completion_queue_region=self.queue_region
-                    )
-            tq_tasks = pool.map(task_constructor, mazepa_tasks)
+                )
+
+            '''pool = multiprocessing.Pool(self.threads)
+            tq_tasks = pool.map(task_constructor, mazepa_tasks)'''
+            tq_tasks = [task_constructor(t) for t in mazepa_tasks]
             self.submit_tq_tasks(tq_tasks)
 
     @retry
