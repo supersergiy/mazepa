@@ -161,9 +161,8 @@ class Queue:
                     completion_queue_region=self.queue_region
                 )
 
-            '''pool = multiprocessing.Pool(self.threads)
-            tq_tasks = pool.map(task_constructor, mazepa_tasks)'''
-            tq_tasks = [task_constructor(t) for t in mazepa_tasks]
+            pool = multiprocessing.Pool(self.threads)
+            tq_tasks = pool.map(task_constructor, mazepa_tasks)
             self.submit_tq_tasks(tq_tasks)
 
     @retry
