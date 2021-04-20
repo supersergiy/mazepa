@@ -19,7 +19,7 @@ retry = tenacity.retry(
   )
 
 
-# TQ wrapper. Theretically don't have to use TQ library, but it's nice
+# TQ wrapper. Theoretically don't have to use TQ library, but it's nice
 class MazepaTaskTQ(TQRegisteredTask):
     def __init__(self, task=None,
             task_spec=None,
@@ -123,7 +123,7 @@ class Queue:
 
             if completion_queue_name is not None:
                 if self.queue_type == 'fq':
-                    raise NotImplementedError("Completion queue is not supported with sqs")
+                    raise NotImplementedError("Completion queue is not supported with file queue")
 
                 self.completion_registry = None
                 self.completion_queue = \
@@ -164,13 +164,13 @@ class Queue:
             tq_tasks = pool.map(task_constructor, mazepa_tasks)
             self.submit_tq_tasks(tq_tasks)
 
+
     @retry
     def remote_queue_is_empty(self):
         """Is our remote queue empty?
         """
         if self.queue_type == 'sqs':
             attribute_names = ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible']
-            is_empty = True
             for i in range(10):
                 response = self.queue_boto.get_queue_attributes(
                         QueueUrl=self.queue_url,
@@ -178,12 +178,11 @@ class Queue:
                 for a in attribute_names:
                     num_messages = int(response['Attributes'][a])
                     if num_messages > 0:
-                        is_empty = False
-                        break
+                        return False
                 if i < 9:
                     time.sleep(0.5)
 
-            return is_empty
+            return True
         elif self.queue_type == 'fq':
             return self.queue.is_empty()
         else:
