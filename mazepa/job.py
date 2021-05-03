@@ -1,15 +1,15 @@
 import types
 
 class Task:
-    def __init__(self, *kargs, **kwargs):
+    def __init__(self, *args, **kwargs):
         self.job_id = None
 
-    def __call__(self, *kargs, **kwargs):
+    def __call__(self, *args, **kwargs):
         raise NotImplementedError
 
 
 class Job:
-    def __init__(self, *kargs, task_batch_size=300000, **kwargs):
+    def __init__(self, *args, task_batch_size=300000, **kwargs):
         self.task_batch_size = task_batch_size
         self.task_generator = self.task_generator()
         self.task_batch_generator = self.task_batch_generator()
