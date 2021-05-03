@@ -87,11 +87,14 @@ class Scheduler:
                 break
             time.sleep(sleep_gap_sec)
 
+    def submit_jobs_without_dependencies(self):
+        #TODO
     def submit_jobs(self, jobs_spec):
+        # Step 1: finish all the Jobs without dependencies
         tasks = []
         jobs_just_finished = []
 
-        for job_name, job_object in six.iteritems(self.unfinished_jobs):
+        for job_name, job_object in self.unfinished_jobs.items():
             job_object["metadata"]["task_batch_number"] = (
                 job_object["metadata"]["task_batch_number"] + 1
             )

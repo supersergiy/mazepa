@@ -1,4 +1,6 @@
 import types
+import itertools
+
 
 class Task:
     def __init__(self, *kargs, **kwargs):
@@ -61,6 +63,33 @@ class Job:
 
 
         yield []
+
+
+class JobWithoutDependencies(Job):
+    def task_batch_generator(self):
+        '''
+        yields: generator of all tasks in the job. when done, yields an empty list
+        '''
+        result = []
+        while True:
+            #squeeze the job until it's either done or returns a barrier
+            try:
+                task_batch = self.get_tasks()
+                if isinstance(task_batch, list):
+                    raise Exception(f"Objects of JobWithoutDependencies class must return generators on get_tasks() call")
+                elif isinstance(task_batch, types.GeneratorType):
+                    result = itertools.chain(result, task_batch)
+                else:
+                    raise Exception(f"Object of unsupported type '{type(task_batch)}' yielded task_generator")
+
+            except StopIteration:
+                #means that this job has no more tasks, it's done
+                yield result
+                break
+
+        yield []
+
+
 
 class MazepaExecutionSignal:
     def __init__(self):
