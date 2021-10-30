@@ -77,7 +77,7 @@ class Scheduler:
             if unsubmitted_jobs is not None:
                 self.submit_jobs(unsubmitted_jobs)
 
-    def execute_until_completion(self, sleep_gap_sec=4):
+    def execute_until_completion(self, sleep_gap_sec=1):
         jobs_spec = AllJobsIndicator()
         self.submit_jobs(jobs_spec)
 

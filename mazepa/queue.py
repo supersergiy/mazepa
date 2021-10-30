@@ -155,14 +155,14 @@ class Queue:
             for t in mazepa_tasks:
                 t.execute()
         else:
-            pool = multiprocessing.Pool(self.threads)
-            task_constructor = functools.partial(
-                    MazepaTaskTQ,
-                    completion_queue_name=self.completion_queue_name,
-                    completion_queue_region=self.queue_region
-                    )
-            tq_tasks = pool.map(task_constructor, mazepa_tasks)
-            self.submit_tq_tasks(tq_tasks)
+            with multiprocessing.Pool(self.threads) as pool:
+                task_constructor = functools.partial(
+                        MazepaTaskTQ,
+                        completion_queue_name=self.completion_queue_name,
+                        completion_queue_region=self.queue_region
+                        )
+                tq_tasks = pool.map(task_constructor, mazepa_tasks)
+                self.submit_tq_tasks(tq_tasks)
 
 
     @retry
@@ -241,8 +241,9 @@ class Queue:
                             resp['Messages'][i]['Body']))
 
                 self.queue_boto.delete_message_batch(
-                        QueueUrl=self.completion_queue_url,
-                        Entries=entries)
+                    QueueUrl=self.completion_queue_url,
+                    Entries=entries
+                )
             for t in completed_tasks:
                 if t['job_id'] in self.completion_registry and \
                         t['task_id'] in self.completion_registry[t['job_id']]:
@@ -254,6 +255,10 @@ class Queue:
                         del self.completion_registry[t['job_id']]
                 else:
                     print (f"Unregistered task {t['task_id']} from job {t['job_id']}")
+
+            if len(completed_jobs) > 2:
+                print (f"Have some completed jobs, stoping polling")
+                break
 
 
         if len(completed_jobs) > 0:
