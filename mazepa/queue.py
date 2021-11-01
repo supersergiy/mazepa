@@ -212,7 +212,7 @@ class Queue:
                     if self.remote_queue_is_empty():
                         return mazepa.job.AllJobsIndicator()
                     else:
-                        time.sleep(5)
+                        time.sleep(1)
                         return None
 
 
