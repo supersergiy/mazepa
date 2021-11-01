@@ -155,14 +155,14 @@ class Queue:
             for t in mazepa_tasks:
                 t.execute()
         else:
-            pool = multiprocessing.Pool(self.threads)
-            task_constructor = functools.partial(
-                    MazepaTaskTQ,
-                    completion_queue_name=self.completion_queue_name,
-                    completion_queue_region=self.queue_region
-                    )
-            tq_tasks = pool.map(task_constructor, mazepa_tasks)
-            self.submit_tq_tasks(tq_tasks)
+            with multiprocessing.Pool(self.threads) as pool:
+                task_constructor = functools.partial(
+                        MazepaTaskTQ,
+                        completion_queue_name=self.completion_queue_name,
+                        completion_queue_region=self.queue_region
+                        )
+                tq_tasks = pool.map(task_constructor, mazepa_tasks)
+                self.submit_tq_tasks(tq_tasks)
 
 
     @retry
