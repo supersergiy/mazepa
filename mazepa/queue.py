@@ -241,8 +241,9 @@ class Queue:
                             resp['Messages'][i]['Body']))
 
                 self.queue_boto.delete_message_batch(
-                        QueueUrl=self.completion_queue_url,
-                        Entries=entries)
+                    QueueUrl=self.completion_queue_url,
+                    Entries=entries
+                )
             for t in completed_tasks:
                 if t['job_id'] in self.completion_registry and \
                         t['task_id'] in self.completion_registry[t['job_id']]:
@@ -254,6 +255,10 @@ class Queue:
                         del self.completion_registry[t['job_id']]
                 else:
                     print (f"Unregistered task {t['task_id']} from job {t['job_id']}")
+
+            if len(completed_jobs) > 2:
+                print (f"Have some completed jobs, stoping polling")
+                break
 
 
         if len(completed_jobs) > 0:
