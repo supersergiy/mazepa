@@ -33,6 +33,7 @@ class MazepaTaskTQ(TQRegisteredTask):
             task_spec = mazepa.serialize(task)
             task_id = str(uuid.uuid4())
             job_id = task.job_name
+
         super().__init__(task_spec=task_spec,
                 task_id=task_id, job_id=job_id,
                 completion_queue_name=completion_queue_name,
@@ -155,14 +156,19 @@ class Queue:
             for t in mazepa_tasks:
                 t.execute()
         else:
-            with multiprocessing.Pool(self.threads) as pool:
-                task_constructor = functools.partial(
-                        MazepaTaskTQ,
-                        completion_queue_name=self.completion_queue_name,
-                        completion_queue_region=self.queue_region
-                        )
-                tq_tasks = pool.map(task_constructor, mazepa_tasks)
-                self.submit_tq_tasks(tq_tasks)
+            task_constructor = functools.partial(
+                MazepaTaskTQ,
+                completion_queue_name=self.completion_queue_name,
+                completion_queue_region=self.queue_region
+            )
+
+            print ("Converting tasks...")
+            tq_tasks = [task_constructor(mt) for mt in mazepa_tasks]
+            #with multiprocessing.Pool(self.threads) as pool:
+                #print ("Converting tasks...")
+                #tq_tasks = pool.map(task_constructor, mazepa_tasks)
+            print ("Submitting...")
+            self.submit_tq_tasks(tq_tasks)
 
 
     @retry
@@ -226,6 +232,7 @@ class Queue:
                             MaxNumberOfMessages=10)
 
             if 'Messages' not in resp:
+                print ("No more messages!")
                 break
             else:
                 entries = []
@@ -256,11 +263,11 @@ class Queue:
                 else:
                     print (f"Unregistered task {t['task_id']} from job {t['job_id']}")
 
-            if len(completed_jobs) > 2:
+            if len(completed_jobs) > 10:
                 print (f"Have some completed jobs, stoping polling")
                 break
 
-
+        print (f"Returning {len(completed_jobs)} completed jobs")
         if len(completed_jobs) > 0:
             return completed_jobs
         else:
