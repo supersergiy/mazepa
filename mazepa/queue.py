@@ -163,10 +163,11 @@ class Queue:
             )
 
             print ("Converting tasks...")
-            tq_tasks = [task_constructor(mt) for mt in mazepa_tasks]
-            #with multiprocessing.Pool(self.threads) as pool:
-                #print ("Converting tasks...")
-                #tq_tasks = pool.map(task_constructor, mazepa_tasks)
+            if len(mazepa_tasks) > 1000:
+                with multiprocessing.Pool(self.threads) as pool:
+                    tq_tasks = pool.map(task_constructor, mazepa_tasks)
+            else:
+                tq_tasks = [task_constructor(mt) for mt in mazepa_tasks]
             print ("Submitting...")
             self.submit_tq_tasks(tq_tasks)
 
