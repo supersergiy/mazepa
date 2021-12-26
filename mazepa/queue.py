@@ -105,6 +105,7 @@ class Queue:
         self.queue_region = queue_region
         self.completion_queue_name = completion_queue_name
         self.completion_registry = None
+        self.constructor_pool = multiprocessing.Pool(self.threads)
 
         if queue_name is None:
             self.local_execution = True
@@ -163,9 +164,8 @@ class Queue:
             )
 
             print ("Converting tasks...")
-            if len(mazepa_tasks) > 1000:
-                with multiprocessing.Pool(self.threads) as pool:
-                    tq_tasks = pool.map(task_constructor, mazepa_tasks)
+            if len(mazepa_tasks) > 10000:
+                tq_tasks = self.constructor_pool.map(task_constructor, mazepa_tasks)
             else:
                 tq_tasks = [task_constructor(mt) for mt in mazepa_tasks]
             print ("Submitting...")
@@ -264,7 +264,7 @@ class Queue:
                 else:
                     print (f"Unregistered task {t['task_id']} from job {t['job_id']}")
 
-            if len(completed_jobs) > 10:
+            if len(completed_jobs) > 5:
                 print (f"Have some completed jobs, stoping polling")
                 break
 

@@ -15,7 +15,7 @@ class Scheduler:
         queue_name=None,
         completion_queue_name=None,
         queue_region=None,
-        threads=8,
+        threads=16,
         max_task_batch=20000,
         job_status_object=None,
         command="",
