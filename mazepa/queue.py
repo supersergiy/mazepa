@@ -98,14 +98,20 @@ def send_message(q, message):
 
 
 class Queue:
-    def __init__(self, queue_name=None, completion_queue_name=None,
-            threads=0, queue_region=None):
+    def __init__(
+        self,
+        queue_name=None,
+        completion_queue_name=None,
+        threads=0, queue_region=None
+    ):
         self.threads = threads
         self.queue_name = queue_name
         self.queue_region = queue_region
         self.completion_queue_name = completion_queue_name
         self.completion_registry = None
-        self.constructor_pool = multiprocessing.Pool(self.threads)
+        self.constructor_pool = multiprocessing.Pool(
+            max(self.threads, 1)
+        )
 
         if queue_name is None:
             self.local_execution = True
@@ -252,6 +258,7 @@ class Queue:
                     QueueUrl=self.completion_queue_url,
                     Entries=entries
                 )
+
             for t in completed_tasks:
                 if t['job_id'] in self.completion_registry and \
                         t['task_id'] in self.completion_registry[t['job_id']]:

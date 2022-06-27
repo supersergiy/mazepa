@@ -68,14 +68,18 @@ class Scheduler:
 
     def submit_ready_jobs(self):
         jobs_ready = self.queue.get_completed()
-        if jobs_ready is not None:
+        if jobs_ready is None:
+            jobs_ready = []
+        elif isinstance(jobs_ready, AllJobsIndicator):
+            jobs_ready = [job_name for job_name in self.unfinished_jobs]
+
+        for job_name, job_object in self.unfinished_jobs.items():
+            if job_name not in jobs_ready and not job_object['job'].waiting_for_completion:
+                jobs_ready.append(job_name)
+
+        if len(jobs_ready) > 0:
             self.submit_jobs(jobs_ready)
-        else:
-            unsubmitted_jobs = self.queue.get_unsubmitted_jobs(
-                self.unfinished_jobs
-            )
-            if unsubmitted_jobs is not None:
-                self.submit_jobs(unsubmitted_jobs)
+
 
     def execute_until_completion(self, sleep_gap_sec=1):
         jobs_spec = AllJobsIndicator()
@@ -101,13 +105,16 @@ class Scheduler:
             if isinstance(jobs_spec, AllJobsIndicator) or job_name in jobs_spec:
                 if isinstance(job, Job):
                     this_job_tasks = job.get_task_batch()
-                    print(
-                        "Got {} tasks from job '{}'".format(
-                            len(this_job_tasks), job_name
-                        )
-                    )
-                    if this_job_tasks == []:
+                    if this_job_tasks is None:
                         jobs_just_finished.append(job_name)
+                        this_job_tasks = []
+                        print (f"{job_name} finished!")
+                    else:
+                        print(
+                            "Got {} tasks from job '{}'".format(
+                                len(this_job_tasks), job_name
+                            )
+                        )
                 else:
                     try:
                         this_job_tasks = job()
