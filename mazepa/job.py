@@ -9,10 +9,11 @@ class Task:
 
 
 class Job:
-    def __init__(self, *args, task_batch_size=300000, **kwargs):
+    def __init__(self, *args, task_batch_size=10000, **kwargs):
         self.task_batch_size = task_batch_size
         self.task_generator = self.task_generator()
         self.task_batch_generator = self.task_batch_generator()
+        self.waiting_for_completion = False
 
     def get_tasks(self):
         return next(self.task_generator)
@@ -28,15 +29,17 @@ class Job:
         yields: list of tasks that can be completed. when done, yields an empty list
         '''
         result = []
+
         while True:
-            #squeeze the job until it's either done or returns a barrier
+            #squeeze the job until it's either done or returns a barrier, or reaches the max number of tasks per batch
             try:
                 task_batch = self.get_tasks()
                 if task_batch is Barrier:
-                    if len(result) == 0:
+                    if len(result) == 0 and self.waiting_for_completion:
                         raise Exception(f"Job '{type(self)}' issued two Barriers in a row, "
                                          "or issued a barrier as the first task")
                     else:
+                        self.waiting_for_completion = True
                         yield result
                         result = []
                 elif isinstance(task_batch, list):
@@ -45,12 +48,14 @@ class Job:
                     for new_task in task_batch:
                         result.append(new_task)
                         if len(result) >= self.task_batch_size:
+                            self.waiting_for_completion = False
                             yield result
                             result = []
                 else:
                     raise Exception(f"Object of unsupported type '{type(task_batch)}' yielded task_generator")
 
                 if len(result) >= self.task_batch_size:
+                    self.waiting_for_completion = False
                     yield result
                     result = []
 
@@ -60,7 +65,9 @@ class Job:
                 break
 
 
+        self.waiting_for_completion = True
         yield []
+        yield None
 
 class MazepaExecutionSignal:
     def __init__(self):
