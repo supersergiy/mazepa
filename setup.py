@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="mazepa",
-    version="0.1.4",
+    version="0.1.5",
     author="Sergiy Popovych",
     author_email="sergiy.popovich@gmail.com",
     description="A tool for efficient scheduling of independent tasks to remote workers",
