@@ -127,7 +127,8 @@ class Queue:
                 self.queue_boto = boto3.client('sqs',
                                                region_name=queue_region)
                 self.queue_url = self.queue_boto.get_queue_url(
-                        QueueName=self.queue_name)["QueueUrl"]
+                        QueueName=self.queue_name.replace("sqs://", "")
+                    )["QueueUrl"]
 
             if completion_queue_name is not None:
                 if self.queue_type == 'fq':
@@ -141,8 +142,9 @@ class Queue:
                                 green=False)
                 self.completion_queue_url = \
                         self.queue_boto.get_queue_url(
-                              QueueName=
-                                  completion_queue_name)["QueueUrl"]
+                            QueueName=
+                                completion_queue_name.replace("sqs://", "")
+                        )["QueueUrl"]
 
                 self.completion_registry = defaultdict(lambda: {})
 
