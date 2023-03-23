@@ -55,7 +55,7 @@ def click_options(cls):
         "--parallel",
         nargs=1,
         type=int,
-        default=1,
+        default=16,
         help="Number of processes to use for queue insertion. Use 0 for all cores.",
         show_default=True,
     )
