@@ -36,6 +36,7 @@ def click_options(cls):
         default="us-east-1",
         help="AWS region of  SQS queues. Task queue and completion "
         "queue must share the same region.",
+        show_default=True,
     )
 
     restart_from_checkpoint_file = click.option(
