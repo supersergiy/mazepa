@@ -4,6 +4,8 @@ import click
 from mazepa.scheduler import Scheduler
 from mazepa.executor import Executor
 
+import multiprocessing as mp
+
 
 def click_options(cls):
     queue = click.option(
@@ -36,6 +38,7 @@ def click_options(cls):
         default="us-east-1",
         help="AWS region of  SQS queues. Task queue and completion "
         "queue must share the same region.",
+        show_default=True,
     )
 
     restart_from_checkpoint_file = click.option(
@@ -48,7 +51,16 @@ def click_options(cls):
         "can start from where it left off before the interruption.",
     )
 
-    return queue(completion_queue(region(restart_from_checkpoint_file(cls))))
+    parallel = click.option(
+        "--parallel",
+        nargs=1,
+        type=int,
+        default=16,
+        help="Number of processes to use for queue insertion. Use 0 for all cores.",
+        show_default=True,
+    )
+
+    return parallel(queue(completion_queue(region(restart_from_checkpoint_file(cls)))))
 
 
 def parse_queue_params(args):
@@ -129,9 +141,16 @@ def parse_scheduler_from_kwargs(args):
 
     # If running from the command line and not restarting from a file, store the command
     if len(sys.argv) > 1 and (
-        "command" not in scheduler_params or scheduler_params["command"] == ""
+        "command" not in scheduler_params 
+        or scheduler_params["command"] == ""
     ):
         scheduler_params["command"] = " ".join(sys.argv)
+
+    if args["parallel"] == 0:
+        scheduler_params["threads"] = mp.cpu_count()
+    else:
+        scheduler_params["threads"] = int(args["parallel"])
+
     return Scheduler(**scheduler_params)
 
 
